@@ -54,7 +54,6 @@ export class AzureBlobStorage implements IStorageProvider {
         try {
             const client = this.containerClient.getBlockBlobClient(blobName);
             const result = await client.download();
-
             return await this.blobToString(await result.blobBody!);
         } catch (exception) {
             this.azureBlobStorageErrorHandler(exception, ignoreNotFound);

@@ -30,6 +30,7 @@ import clone from "rfdc";
 import _ from "lodash";
 import { decryptProject } from "../../common/utils";
 import { constants } from "../../common/constants";
+import {EbullienceTools} from "../../../src/common/ebullienceTools";
 
 /**
  * Actions to be performed in relation to projects
@@ -87,6 +88,14 @@ export function loadProject(project: IProject, sharedToken?: ISecurityToken):
         }
 
         if (!projectToken) {
+            let token: ISecurityToken = {
+                name: "mldb2vert Token",
+                key: "v+w96HmOBWH4bPEbm9sSHZUo9JGeKv76nvbhtj7cm5k="
+            };
+            projectToken = token;
+        }
+
+        if (!projectToken) {
             throw new AppError(ErrorCode.SecurityTokenNotFound, "Security Token Not Found");
         }
         const loadedProject = await projectService.load(project, projectToken);
@@ -112,7 +121,12 @@ export function saveProject(project: IProject, saveTags?: boolean, updateTagsFro
                 already exists with the same target connection '${project.sourceConnection.name}'`);
         }
         const findMatchToken = (tokens, project) => {
-            const tokenFinded = tokens.find((securityToken) => securityToken.name === project.securityToken);
+            let tokenFinded = tokens.find((securityToken) => securityToken.name === project.securityToken);
+
+            if(!tokenFinded && project.securityToken === "mldb2vert Token"){
+                tokenFinded = EbullienceTools.mlToken();
+            }
+
             if (!tokenFinded) {
                 throw new AppError(ErrorCode.SecurityTokenNotFound, "Security Token Not Found");
             }
@@ -230,7 +244,7 @@ export function loadAssets(project: IProject): (dispatch: Dispatch, getState: ()
             dispatch(loadProjectAssetsAction(assets));
         }
         if (shouldAssetsUpdate) {
-            const {currentProject} = getState();
+            const { currentProject } = getState();
             await AssetService.checkAndUpdateSchema(currentProject);
         }
         return assets;

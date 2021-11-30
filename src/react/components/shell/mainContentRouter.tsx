@@ -28,6 +28,8 @@ export function MainContentRouter() {
                 <Route path="/settings" component={AppSettingsPage} />
                 <Route path="/connections/:connectionId" component={ConnectionPage} />
                 <Route path="/connections" exact component={ConnectionPage} />
+                <Route path="/project/:projectId/edit/:assetId/:projectBlobFile" component={EditorPage} />
+                <Route path="/projects/:projectId/edit/:assetId" component={EditorPage} />
                 <Route path="/projects/:projectId/edit" component={EditorPage} />
                 <Route path="/projects/create" component={ProjectSettingsPage} />
                 <Route path="/projects/:projectId/modelcompose" component={ModelComposePage} />

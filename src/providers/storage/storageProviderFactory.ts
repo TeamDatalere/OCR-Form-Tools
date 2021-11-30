@@ -136,5 +136,17 @@ export class StorageProviderFactory {
         return this.providers[providerType] !== undefined;
     }
 
+    /**
+     * Created for Ebullience. Since we are only going to be using azure we can skip a few steps
+     * @param sasString - azure blob storage connection string
+     * @returns 
+     */
+    public static createAzureConnectionFromSas(sasString: string) {
+        const providerType = "azureBlobStorage";
+        let options = { "sas": sasString };
+        return this.create(providerType, options);
+
+    }
+
     private static providerRegistry: { [id: string]: IStorageProviderRegistrationOptions } = {};
 }

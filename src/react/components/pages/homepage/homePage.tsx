@@ -267,6 +267,7 @@ export default class HomePage extends React.Component<IHomePageProps, IHomePageS
                 }
             }
             const selectedProject = { ...JSON.parse(projectStr), sourceConnection: project.sourceConnection };
+            
             await this.loadSelectedProject(fillTagsColor(selectedProject));
         } catch (err) {
             if (err instanceof AppError && err.errorCode === ErrorCode.BlobContainerIONotFound) {

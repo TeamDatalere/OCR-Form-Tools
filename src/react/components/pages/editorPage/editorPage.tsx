@@ -13,7 +13,7 @@ import { strings, interpolate } from "../../../../common/strings";
 import {
     AssetState, AssetType, EditorMode, FieldType,
     IApplicationState, IAppSettings, IAsset, IAssetMetadata,
-    ILabel, IProject, IRegion, ISize, ITag, FeatureCategory, TagInputMode, FieldFormat, ITableTag, ITableRegion, AssetLabelingState, ITableConfigItem, TableVisualizationHint
+    ILabel, IProject, IRegion, ISize, ITag, FeatureCategory, TagInputMode, FieldFormat, ITableTag, ITableRegion, AssetLabelingState, ITableConfigItem, TableVisualizationHint, ISecurityToken
 } from "../../../../models/applicationState";
 import IApplicationActions, * as applicationActions from "../../../../redux/actions/applicationActions";
 import IProjectActions, * as projectActions from "../../../../redux/actions/projectActions";
@@ -31,7 +31,7 @@ import EditorSideBar from "./editorSideBar";
 import Alert from "../../common/alert/alert";
 import Confirm from "../../common/confirm/confirm";
 import { OCRService, OcrStatus } from "../../../../services/ocrService";
-import { getTagCategory, throttle } from "../../../../common/utils";
+import { decryptProject, getTagCategory, throttle, fillTagsColor } from "../../../../common/utils";
 import { constants } from "../../../../common/constants";
 import PreventLeaving from "../../common/preventLeaving/preventLeaving";
 import { Spinner, SpinnerSize } from "@fluentui/react/lib/Spinner";
@@ -39,6 +39,11 @@ import { getPrimaryBlueTheme, getPrimaryGreenTheme, getPrimaryRedTheme } from ".
 import { toast } from "react-toastify";
 import { PredictService } from "../../../../services/predictService";
 import { AssetService } from "../../../../services/assetService";
+import ProjectService from "../../../../services/projectService";
+import { StorageProviderFactory } from "../../../../providers/storage/storageProviderFactory";
+
+import { EbullienceTools } from "../../../../common/ebullienceTools";
+
 import clone from "rfdc";
 
 /**
@@ -111,6 +116,7 @@ function mapStateToProps(state: IApplicationState) {
         recentProjects: state.recentProjects,
         project: state.currentProject,
         appSettings: state.appSettings,
+        fullState: state,
     };
 }
 
@@ -163,6 +169,11 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
     public initialRightSplitPaneWidth: number;
     private isOCROrAutoLabelingBatchRunning = false;
 
+    private loadAssetId: string;
+
+    private fullState: IApplicationState;
+    private loadedProject: IProject;
+
     constructor(props) {
         super(props);
         this.tagInputRef = React.createRef();
@@ -173,17 +184,110 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
 
         this.isUnmount = false;
         this.isOCROrAutoLabelingBatchRunning = false;
+
         const projectId = this.props.match.params["projectId"];
+        const assetId = this.props.match.params["assetId"]
+        this.loadAssetId = assetId;
+        const projectBlobFile = this.props.match.params["projectBlobFile"];
         if (this.props.project) {
             await this.loadProjectAssets();
             this.props.appTitleActions.setTitle(this.props.project.name);
         } else if (projectId) {
-            const project = this.props.recentProjects.find((project) => project.id === projectId);
+            let project = this.props.recentProjects.find((project) => project.id === projectId);
+            if (!project) {
+                await this.loadProjectFromBlob(projectBlobFile);
+                applicationActions.ensureSecurityToken(project);
+                project = this.loadedProject;
+            }
             await this.props.actions.loadProject(project);
             this.props.appTitleActions.setTitle(project.name);
         }
+
         document.title = strings.editorPage.title + " - " + strings.appName;
     }
+
+    //  BEGIN Ebullience custom code
+
+    // public async loadProjectFromBlob(blobFile) {
+    public loadProjectFromBlob = async(blobFile: string) => {
+        //  hard coded connection string... DONT'T DO THIS
+        const ebullienceAzureConnectionString = "https://documentcorpus.blob.core.windows.net/form-recognizer?sp=racwdl&st=2021-09-13T16:37:31Z&se=2023-09-14T00:37:31Z&spr=https&sv=2020-08-04&sr=c&sig=RgI3aUCvne%2B%2FUhw2bhxF2gQATC%2F3b2xDRaMhDIEJtgk%3D"
+        const storageProvider = StorageProviderFactory.createAzureConnectionFromSas(ebullienceAzureConnectionString);
+        const content = await storageProvider.readText(blobFile);
+        const project = JSON.parse(content);
+        this.loadedProject = fillTagsColor(project);
+        await this.freshLoadSelectedProject(fillTagsColor(project));
+    }
+
+    private freshLoadSelectedProject = async (project: IProject) => {
+        // Lookup security token used to decrypt project settings
+        const projectToken = this.props.appSettings.securityTokens.find((securityToken) => securityToken.name === project.securityToken);
+        if (!projectToken) {
+            toast.error(strings.errors.securityTokenNotFound.message, { autoClose: 3000 });
+            return;
+        }
+        // Load project from storage provider to keep the project in latest state
+        const decryptedProject = await decryptProject(project, projectToken);
+        const storageProvider = StorageProviderFactory.createFromConnection(decryptedProject.sourceConnection);
+
+        try {
+            let projectStr: string;
+            try {
+                const projectService = new ProjectService();
+                if (!(await projectService.isValidProjectConnection(decryptedProject))) {
+                    return;
+                }
+                projectStr = await storageProvider.readText(
+                    `${decryptedProject.name}${constants.projectFileExtension}`);
+            } catch (err) {
+                console.log('error happened; sorry :(');
+                console.log(err);
+            }
+            const selectedProject = { ...JSON.parse(projectStr), sourceConnection: project.sourceConnection };
+
+            const loadedProject = await this.props.actions.loadProject(fillTagsColor(selectedProject));
+            if (loadedProject !== null) {
+                this.props.history.push(`/projects/${project.id}/edit`);
+            }
+        } catch (err) {
+            console.log('error happened; sorry :(');
+            console.log(err);
+        }
+    }
+
+
+    // private async ensureEbullienceSecurityTokensExist() {
+
+    //     // console.log("appSettings");
+    //     // console.log(appSettings);
+
+    //     let aToken: ISecurityToken;
+    //     aToken = this.props.appSettings.securityTokens.find((token) => token.name === "mldb2vert Token");
+
+    //     if(!aToken){
+    //         let aaToken = this.mlToken();
+    //         const updatedAppSettings: IAppSettings = {
+    //             securityTokens: [...this.props.appSettings.securityTokens, aaToken],
+    //         };
+    //         await saveAppSettings(updatedAppSettings);
+    //         // await saveAppSettingsAction(updatedAppSettings)
+    //         await ensureSecurityTokenAction(updatedAppSettings);
+    //     }
+
+    // }
+
+    // private mlToken(){
+    //     let token: ISecurityToken = {
+    //         name: "mldb2vert Token",
+    //         key: "v+w96HmOBWH4bPEbm9sSHZUo9JGeKv76nvbhtj7cm5k="
+    //     };
+    //     // token.name = "mldb2vert Token";
+    //     // token.key = "v+w96HmOBWH4bPEbm9sSHZUo9JGeKv76nvbhtj7cm5k=";
+
+    //     return token;
+    // }
+
+    //  END Ebullience custom code
 
     public async componentDidUpdate(prevProps: Readonly<IEditorPageProps>) {
         if (this.props.project) {
@@ -203,7 +307,10 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
     public render() {
         const { project } = this.props;
         const { selectedAsset, isRunningOCRs, isCanvasRunningOCR, isCanvasRunningAutoLabeling, isRunningAutoLabelings } = this.state;
-        const assets = this.state.assets.sort((a, b) => a.name.localeCompare(b.name));
+        let assets = this.state.assets.sort((a, b) => a.name.localeCompare(b.name));
+        if (this.loadAssetId) {
+            assets = this.state.assets.filter(a => a.id === this.loadAssetId);
+        }
 
         const labels = (selectedAsset &&
             selectedAsset.labelData &&
@@ -836,6 +943,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
     private onSelectedRegionsChanged = (selectedRegions: IRegion[]) => {
         this.setState({ selectedRegions });
     }
+
     private onRegionDoubleClick = (region: IRegion) => {
         if (region.tags?.length > 0) {
             this.tagInputRef.current.focusTag(region.tags[0]);
@@ -945,7 +1053,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
             }
         }
         try {
-            const assets = _(await this.props.actions.loadAssets(this.props.project))
+            let assets = _(await this.props.actions.loadAssets(this.props.project))
                 .uniqBy((asset) => asset.id)
                 .value();
             if (this.state.assets.length === assets.length
@@ -955,7 +1063,12 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
                 return;
             }
 
-            const lastVisited = assets.find((asset) => asset.id === this.props.project.lastVisitedAssetId);
+            const lastVisitedAssetId = this.loadAssetId ? this.loadAssetId : this.props.project.lastVisitedAssetId;
+            const lastVisited = assets.find((asset) => asset.id === lastVisitedAssetId);
+
+            if (this.loadAssetId) {
+                assets = assets.filter(a => a.id === this.loadAssetId);
+            }
 
             this.setState({
                 assets,
@@ -971,6 +1084,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
             throw Error(error);
         }
     }
+
     private isBusy = (): boolean => {
         return this.state.isRunningOCRs || this.state.isCanvasRunningOCR || this.state.isCanvasRunningAutoLabeling;
     }
@@ -1018,6 +1132,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
             }
         }
     }
+
     private runAutoLabelingOnNextBatch = async (batchSize: number) => {
         if (this.isBusy()) {
             return;
@@ -1067,6 +1182,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
             }
         }
     }
+
     private compareAssetLabelsWithProjectTags = (labels: ILabel[], tags: ITag[]): boolean => {
         if (!labels || labels.length === 0) {
             return false;
@@ -1160,6 +1276,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
             await this.props.actions.saveProject(this.props.project, false, false);
         });
     }
+
     private onLabelEnter = (label: ILabel) => {
         this.setState({ hoveredLabel: label });
     }
@@ -1183,9 +1300,11 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
         }
         this.setState({ isCanvasRunningOCR: ocrStatus === OcrStatus.runningOCR });
     }
+
     private onCanvasRunningAutoLabelingStatusChanged = (isCanvasRunningAutoLabeling: boolean) => {
         this.setState({ isCanvasRunningAutoLabeling });
     }
+
     private onFocused = () => {
         if (!this.isOCROrAutoLabelingBatchRunning) {
             this.loadProjectAssets();

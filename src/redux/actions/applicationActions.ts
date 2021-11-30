@@ -8,6 +8,9 @@ import { IAppSettings } from "../../models/applicationState";
 import { IProject, IApplicationState } from "../../models/applicationState";
 import { generateKey } from "../../common/crypto";
 
+import{EbullienceTools} from "../../../src/common/ebullienceTools";
+import { concat } from "lodash";
+
 /**
  * Actions to make changes to application settings
  * @member toggleDevTools - Open or close dev tools
@@ -29,12 +32,23 @@ export function saveAppSettings(appSettings: IAppSettings): (dispatch: Dispatch)
 }
 
 /**
+ * Ensure app settings
+ */
+ export function ensureAppSettings(appSettings: IAppSettings): (dispatch: Dispatch) => Promise<IAppSettings> {
+    return (dispatch: Dispatch) => {
+        dispatch(ensureSecurityTokenAction(appSettings));
+        return Promise.resolve(appSettings);
+    };
+}
+
+/**
  * Ensures that a valid security token is associated with the project, otherwise creates one
  * @param project The project to validate
  */
 export function ensureSecurityToken(project: IProject):
     (dispatch: Dispatch, getState: () => IApplicationState) => Promise<IAppSettings> {
     return async (dispatch: Dispatch, getState: () => IApplicationState) => {
+        console.log("ensuring security token");
         const appState = getState();
         let securityToken = appState.appSettings.securityTokens
             .find((st) => st.name === project.securityToken);
@@ -61,6 +75,17 @@ export function ensureSecurityToken(project: IProject):
 
         await this.saveAppSettings(updatedAppSettings);
 
+        const mlToken = appState.appSettings.securityTokens.find(mt => mt.name === "mldb2vert Token");
+        if (!mlToken){
+            console.log('trying to add mltoken');
+            const newMlToken = EbullienceTools.mlToken();
+            const updatedAppSettingsMl: IAppSettings = {
+                securityTokens: [...appState.appSettings.securityTokens, newMlToken],
+            };
+    
+            await this.saveAppSettings(updatedAppSettingsMl);
+        }
+        
         project.securityToken = securityToken.name;
         dispatch(ensureSecurityTokenAction(updatedAppSettings));
         return updatedAppSettings;

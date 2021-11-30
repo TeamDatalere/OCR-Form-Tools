@@ -88,8 +88,8 @@ export default class EditorSideBar extends React.Component<IEditorSideBarProps, 
         return width / (4 / 3) + 16;
     }
 
-    private selectAsset = (selectedAsset: IAsset): void => {
-        const scrollToIndex = this.props.assets.findIndex((asset) => asset.id === selectedAsset.id);
+    public selectAsset(assetId) {
+        const scrollToIndex = this.props.assets.findIndex((asset) => asset.id === assetId);
 
         this.setState({
             scrollToIndex,

@@ -15,6 +15,8 @@ RUN yarn install
 
 COPY . .
 
+ENV GENERATE_SOURCEMAP false
+
 # Build the app for production
 RUN yarn build
 
@@ -28,4 +30,4 @@ COPY --from=build /usr/src/app/build /usr/share/nginx/html
 RUN rm /etc/nginx/conf.d/default.conf
 COPY --from=build /usr/src/app/nginx.conf /etc/nginx/conf.d/nginx.conf
 EXPOSE 80
-ENTRYPOINT [ "./run.sh" ]
+ENTRYPOINT [ "./run.sh", "eula=accept" ]
