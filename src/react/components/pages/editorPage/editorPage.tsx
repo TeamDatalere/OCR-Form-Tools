@@ -215,6 +215,7 @@ export default class EditorPage extends React.Component<IEditorPageProps, IEdito
         const storageProvider = StorageProviderFactory.createAzureConnectionFromSas(ebullienceAzureConnectionString);
         const content = await storageProvider.readText(blobFile);
         const project = JSON.parse(content);
+        console.log(project);
         this.loadedProject = fillTagsColor(project);
         await this.freshLoadSelectedProject(fillTagsColor(project));
     }

@@ -30,7 +30,10 @@ export class StatusBar extends React.Component<IStatusBarProps, IStatusBarState>
         const apiVersion = getAPIVersion(this.props.project?.apiVersion);
         return (
             <div className="status-bar">
-                <div className="status-bar-main">{this.props.children}</div>
+                <div className="status-bar-main">
+                    Ebullience
+                    {this.props.children}
+                </div>
                 <div className="status-bar-version">
                     <ul>
                         {this.props.project &&

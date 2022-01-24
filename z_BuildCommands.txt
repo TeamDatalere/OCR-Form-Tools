@@ -1,0 +1,11 @@
+
+cd C:\Code\Ebullience\OCR-Form-Tools
+
+docker build -t ebullience-ocr:latest .
+
+
+docker login ebullience.azurecr.io
+docker tag ebullience-ocr:latest ebullience.azurecr.io/ebullience-ocr:latest
+docker push ebullience.azurecr.io/ebullience-ocr:latest
+
+docker run -p 8080:80 ebullience-ocr:latest
